@@ -4,8 +4,7 @@ import queue
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 from config import LLM_CONFIG, CHANNEL_HISTORY
 from mcp_bridge import setup_local_workspace_tools, attach_openclaw_mcp
-
-DISCORD_TOKEN = "MTQ5NDc3NjUxMTg4NDk1NTY2OA.GRqqE9.LRBuYTWa3hbKGE133K32xyQgLILJ6ORyVxwIj0"
+from token import DISCORD_TOKEN
 
 intents = discord.Intents.default()
 intents.message_content = True
