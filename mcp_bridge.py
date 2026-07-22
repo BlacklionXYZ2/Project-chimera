@@ -2,10 +2,9 @@
 import asyncio
 from autogen import register_function
 
-# MCP & AG2 Imports
+# Use the official MCP Python SDK directly
 from mcp import StdioServerParameters, ClientSession
 from mcp.client.stdio import stdio_client
-from autogen.tools.mcp import StdioMcpToolAdapter
 
 def register_tool_for_agents(f, caller, executor, name, description):
     """Registers a function tool across one or multiple caller agents."""
@@ -46,35 +45,38 @@ def setup_local_workspace_tools(onyx, sora, atlas, user_proxy):
     )
 
 async def attach_openclaw_mcp(onyx, sora, user_proxy):
-    """Spawns OpenClaw MCP stdio server and binds tools to Onyx and Sora."""
+    """Spawns OpenClaw MCP stdio server and binds tools directly to Onyx and Sora."""
     try:
-        # Define connection parameters for OpenClaw stdio process
         server_params = StdioServerParameters(
             command="openclaw",
             args=["mcp", "serve"]
         )
 
-        # Establish stdio client connection
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                
-                # Retrieve available tools from OpenClaw MCP
                 mcp_tools = await session.list_tools()
 
-                # Register each tool returned by OpenClaw to Onyx and Sora
                 for tool in mcp_tools.tools:
-                    adapter = StdioMcpToolAdapter(
-                        server_params=server_params,
-                        tool=tool,
-                        session=session
-                    )
-                    # Register adapter to AG2 agents
-                    for agent in [onyx, sora]:
-                        adapter.register_for_llm(agent)
-                    adapter.register_for_execution(user_proxy)
+                    # Dynamically create an execution wrapper for each MCP tool
+                    def create_mcp_wrapper(tool_name):
+                        async def mcp_wrapper(**kwargs):
+                            result = await session.call_tool(tool_name, arguments=kwargs)
+                            return str(result.content)
+                        return mcp_wrapper
 
-                print("✅ [MCP] OpenClaw MCP Server tools successfully registered.")
+                    wrapper_fn = create_mcp_wrapper(tool.name)
+
+                    # Register the tool natively in AutoGen / AG2
+                    register_tool_for_agents(
+                        wrapper_fn,
+                        caller=[onyx, sora],
+                        executor=user_proxy,
+                        name=f"openclaw_{tool.name}",
+                        description=tool.description or f"OpenClaw tool: {tool.name}",
+                    )
+
+                print("✅ [MCP] OpenClaw MCP Server connected and tools registered.")
 
     except Exception as e:
         print(f"⚠️ [MCP Warning] OpenClaw MCP initialization skipped: {e}")
